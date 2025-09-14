@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jrq.lendsta"
+    namespace = "com.jrq.listah"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 

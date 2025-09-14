@@ -119,20 +119,7 @@ class LoansDatabase {
       );
     ''');
 
-    // Optional seeds
-    await db.insert('people', {'name': 'Juan Dela Cruz'});
-    await db.insert('people', {'name': 'Maria Clara'});
-    await db.insert('people', {'name': 'Jose Rizal'});
-
-    await db.insert('loans', {
-      'borrower': 'Juan Dela Cruz',
-      'item': 'Sample Item',
-      'amount': 10000.0,
-      'interest': 5.0,
-      'dueDate': DateTime.now().toIso8601String(),
-      'status': 'unpaid',
-      'imagePath': null,
-    });
+    // No sample seeds on install
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -151,10 +138,7 @@ class LoansDatabase {
           name TEXT NOT NULL UNIQUE
         );
       ''');
-      // Optional seeds
-      await db.insert('people', {'name': 'Juan Dela Cruz'});
-      await db.insert('people', {'name': 'Maria Clara'});
-      await db.insert('people', {'name': 'Jose Rizal'});
+      // No sample seeds when adding the people table
     }
     // v3 -> v4: remap legacy statuses (approved/pending) to 'unpaid'
     if (oldVersion < 4) {

@@ -16,11 +16,10 @@ Smart, simple loan tracking for individuals and small teams.
 
 ## Overview
 
-Lendsta (formerly “Listah”) is a Flutter app that helps you record loans, track repayment status, and keep a tidy overview for each person. It stores data locally using SQLite via `sqflite` and aims to be fast, offline-first, and easy to use.
+Lendsta is a Flutter app that helps you record loans, track repayment status, and keep a tidy overview for each person. It stores data locally using SQLite via `sqflite` and aims to be fast, offline-first, and easy to use.
 
 ### Highlights
 - Add loans with borrower, item, amount, interest, date, and optional photo attachment.
-- Two statuses only: Paid or Unpaid (Approved/Pending removed).
 - Dashboard summary: total loans, total amount, average interest, paid count, and unpaid amount.
 - Per-person summary with the same key metrics.
 - Clean list and detail views with overflow-safe UI and ellipsized text.
@@ -74,12 +73,6 @@ lib/
 
 - UI is tuned to avoid overflow: long names and labels use `TextOverflow.ellipsis` and wrapping where appropriate.
 - Attachments are stored as local file paths and shown inline in details.
-
-## Contributing
-
-1. Fork and branch from `main`.
-2. Run `flutter format . && flutter analyze` before opening a PR.
-3. Keep changes focused and documented in the PR description.
 
 ## Acknowledgements
 
