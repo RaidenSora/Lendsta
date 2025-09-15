@@ -1,5 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart' show getDatabasesPath;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel, MissingPluginException;
 import '../data/loans_db.dart';
 import '../models/loan.dart';
 import '../models/person.dart';
@@ -9,6 +17,7 @@ import '../widgets/loan_list_skeleton.dart';
 import '../widgets/state_card.dart';
 import '../widgets/summary_card.dart';
 import 'people_page.dart';
+import '../utils/csv_export.dart';
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -267,6 +276,15 @@ class _DashboardPageState extends State<Dashboard> {
         ),
         actions: [
           Tooltip(
+            message: 'Export CSV',
+            waitDuration: const Duration(milliseconds: 400),
+            child: IconButton.filledTonal(
+              onPressed: _exportCsv,
+              icon: const Icon(Icons.download_outlined),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
             message: 'Manage people',
             waitDuration: const Duration(milliseconds: 400),
             child: IconButton.filledTonal(
@@ -495,5 +513,161 @@ class _DashboardPageState extends State<Dashboard> {
     if (!mounted) return;
     _refresh();
     _snack('Marked as paid');
+  }
+
+  Future<void> _exportCsv() async {
+    // Fetch loans for current range
+    final DateTime? start = _allTime ? null : _start;
+    final DateTime? end = _allTime ? null : _end;
+    final loans = await _db.getLoansBetween(start, end);
+    final csv = loansToCsv(loans);
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return AlertDialog(
+          title: const Text('Export CSV'),
+          content: SizedBox(
+            width: 600,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Preview (copy or save to file):',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      csv,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: csv));
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
+                _snack('CSV copied to clipboard');
+              },
+              icon: const Icon(Icons.copy_all_outlined),
+              label: const Text('Copy'),
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                await _shareCsv(csv);
+              },
+              icon: const Icon(Icons.share_outlined),
+              label: const Text('Share'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                final savedPath = await _saveCsvToDownloads(csv);
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
+                _snack(savedPath == null ? 'Saved to app storage' : 'Saved: $savedPath');
+              },
+              icon: const Icon(Icons.save_alt),
+              label: const Text('Save to Downloads'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<String?> _saveCsvToDownloads(String csv) async {
+    final ts = DateTime.now();
+    final fname =
+        'loans_export_${ts.year.toString().padLeft(4, '0')}'
+        '${ts.month.toString().padLeft(2, '0')}'
+        '${ts.day.toString().padLeft(2, '0')}_'
+        '${ts.hour.toString().padLeft(2, '0')}'
+        '${ts.minute.toString().padLeft(2, '0')}'
+        '${ts.second.toString().padLeft(2, '0')}';
+
+    final bytes = Uint8List.fromList(utf8.encode(csv));
+
+    // Android method channel to save into Downloads with MediaStore (primary path)
+    try {
+      const ch = MethodChannel('listah/downloads');
+      final saved = await ch.invokeMethod<String>(
+        'saveCsv',
+        {
+          'name': fname,
+          'bytes': bytes,
+        },
+      );
+      if (saved != null && saved.isNotEmpty) return saved;
+    } catch (_) {
+      // ignore and fallback
+    }
+
+    try {
+      final downloadsDir = await getDownloadsDirectory();
+      if (downloadsDir != null) {
+        final filePath = p.join(downloadsDir.path, '$fname.csv');
+        await File(filePath).writeAsString(csv);
+        return filePath;
+      }
+    } catch (_) {}
+
+    // Last resort: app storage next to database, so it’s still retrievable
+    try {
+      final dir = await getDatabasesPath();
+      final filePath = p.join(dir, '$fname.csv');
+      await File(filePath).writeAsString(csv);
+      return filePath;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _shareCsv(String csv) async {
+    final ts = DateTime.now();
+    final fname =
+        'loans_export_${ts.year.toString().padLeft(4, '0')}'
+        '${ts.month.toString().padLeft(2, '0')}'
+        '${ts.day.toString().padLeft(2, '0')}_'
+        '${ts.hour.toString().padLeft(2, '0')}'
+        '${ts.minute.toString().padLeft(2, '0')}'
+        '${ts.second.toString().padLeft(2, '0')}.csv';
+
+    try {
+      final tmpDir = await getTemporaryDirectory();
+      final path = p.join(tmpDir.path, fname);
+      final file = File(path);
+      await file.writeAsString(csv);
+
+      final xFile = XFile(
+        path,
+        name: fname,
+        mimeType: 'text/csv',
+      );
+      await Share.shareXFiles([xFile], text: 'Loans export');
+    } catch (e) {
+      if (!mounted) return;
+      _snack('Share failed: $e');
+    }
   }
 }

@@ -23,6 +23,7 @@ Lendsta is a Flutter app that helps you record loans, track repayment status, an
 - Dashboard summary: total loans, total amount, average interest, paid count, and unpaid amount.
 - Per-person summary with the same key metrics.
 - Clean list and detail views with overflow-safe UI and ellipsized text.
+- Export loans as CSV: copy, save to Downloads, or share.
 
 ## Screens
 
@@ -46,6 +47,24 @@ flutter run
 
 ### Platforms
 - Android only: run on a device or emulator.
+
+## CSV Export & Share
+
+- Where: On the Dashboard, tap the download icon in the top-right AppBar.
+- Scope: Exports the currently selected range. If "All time" is enabled, exports all loans.
+- Options in dialog:
+  - Copy: Copies the CSV to the clipboard.
+  - Save to Downloads: Writes `loans_export_YYYYMMDD_HHMMSS.csv` to the system Downloads folder.
+  - Share: Opens the system share sheet and attaches the CSV file.
+
+Android specifics
+- Android 10+ (API 29+): Uses MediaStore to save into Downloads — no extra permissions.
+- Android 6–9 (API 23–28): Saves to public Downloads and requires storage permission; the manifest entries are included.
+
+CSV format
+- Columns: `id, borrower, item, amount, interest, dueDate, status, imagePath`.
+- Encoding: UTF-8. `dueDate` is ISO 8601.
+- Escaping: Values with commas/quotes/newlines are quoted; quotes are doubled inside quoted fields.
 
 ## Project Structure
 
