@@ -73,10 +73,10 @@ Future<void> showAddLoanSheet({
           }
 
           // ---- Widgets (small helpers) ----
-          String _yyyyMmDd(DateTime d) =>
+          String yyyyMmDd(DateTime d) =>
               '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-          Widget _sectionLabel(String label) => Padding(
+          Widget sectionLabel(String label) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               label,
@@ -87,7 +87,7 @@ Future<void> showAddLoanSheet({
             ),
           );
 
-          Widget _borrowerField() {
+          Widget borrowerField() {
             return Semantics(
               button: true,
               label: 'Borrower, ${borrower ?? 'none selected'}',
@@ -116,14 +116,14 @@ Future<void> showAddLoanSheet({
             );
           }
 
-          Widget _dateRow() {
+          Widget dateRow() {
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: cs.surfaceVariant.withOpacity(.35),
+                color: cs.surfaceContainerHighest.withValues(alpha: .35),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: cs.outlineVariant.withOpacity(.7),
+                  color: cs.outlineVariant.withValues(alpha: .7),
                   width: .6,
                 ),
               ),
@@ -133,7 +133,7 @@ Future<void> showAddLoanSheet({
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _yyyyMmDd(date),
+                      yyyyMmDd(date),
                       style: text.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -166,7 +166,7 @@ Future<void> showAddLoanSheet({
             );
           }
 
-          Widget _attachmentRow() {
+          Widget attachmentRow() {
             final hasImg = imagePath != null;
             return Row(
               children: [
@@ -190,7 +190,7 @@ Future<void> showAddLoanSheet({
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: cs.surfaceVariant.withOpacity(.5),
+                        color: cs.surfaceContainerHighest.withValues(alpha: .5),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -248,7 +248,7 @@ Future<void> showAddLoanSheet({
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: cs.primary.withOpacity(.12),
+                            color: cs.primary.withValues(alpha: .12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           alignment: Alignment.center,
@@ -287,17 +287,17 @@ Future<void> showAddLoanSheet({
                     const SizedBox(height: 14),
 
                     // ---------- Borrower ----------
-                    _sectionLabel('Borrower'),
-                    _borrowerField(),
+                    sectionLabel('Borrower'),
+                    borrowerField(),
                     const SizedBox(height: 14),
 
                     // ---------- Date ----------
-                    _sectionLabel('Date'),
-                    _dateRow(),
+                    sectionLabel('Date'),
+                    dateRow(),
                     const SizedBox(height: 14),
 
                     // ---------- Item ----------
-                    _sectionLabel('Item'),
+                    sectionLabel('Item'),
                     TextFormField(
                       controller: itemController,
                       decoration: const InputDecoration(
@@ -335,8 +335,9 @@ Future<void> showAddLoanSheet({
                           ),
                           validator: (v) {
                             final x = double.tryParse(v ?? '');
-                            if (x == null || x <= 0)
+                            if (x == null || x <= 0) {
                               return 'Enter a valid amount';
+                            }
                             return null;
                           },
                           onChanged: (v) => amount = double.tryParse(v) ?? 0,
@@ -380,8 +381,8 @@ Future<void> showAddLoanSheet({
                     const SizedBox(height: 14),
 
                     // ---------- Attachment ----------
-                    _sectionLabel('Attachment'),
-                    _attachmentRow(),
+                    sectionLabel('Attachment'),
+                    attachmentRow(),
                     const SizedBox(height: 18),
 
                     // ---------- Save ----------

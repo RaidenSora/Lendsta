@@ -22,7 +22,10 @@ class StateCard extends StatelessWidget {
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant.withOpacity(.6), width: .6),
+          side: BorderSide(
+            color: cs.outlineVariant.withValues(alpha: .6),
+            width: .6,
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),

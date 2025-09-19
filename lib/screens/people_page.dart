@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/loans_db.dart';
 import '../models/person.dart';
+import 'dashboard.dart';
 import 'person_detail_page.dart';
 
 class PeoplePage extends StatefulWidget {
@@ -101,7 +102,23 @@ class _PeoplePageState extends State<PeoplePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('People')),
+      appBar: AppBar(
+        title: const Text('People'),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            final nav = Navigator.of(context);
+            if (nav.canPop()) {
+              nav.pop();
+            } else {
+              nav.pushReplacement(
+                MaterialPageRoute(builder: (_) => const Dashboard()),
+              );
+            }
+          },
+        ),
+      ),
       body: FutureBuilder<List<Person>>(
         future: _peopleFuture,
         builder: (context, snap) {

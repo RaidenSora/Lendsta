@@ -11,7 +11,7 @@ class LoanListSkeleton extends StatelessWidget {
       height: h,
       width: w,
       decoration: BoxDecoration(
-        color: cs.surfaceVariant.withOpacity(.5),
+        color: cs.surfaceContainerHighest.withValues(alpha: .5),
         borderRadius: BorderRadius.circular(8),
       ),
     );
@@ -26,7 +26,7 @@ class LoanListSkeleton extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
               side: BorderSide(
-                color: cs.outlineVariant.withOpacity(.6),
+                color: cs.outlineVariant.withValues(alpha: .6),
                 width: .6,
               ),
             ),
@@ -36,7 +36,9 @@ class LoanListSkeleton extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 20,
-                    backgroundColor: cs.surfaceVariant.withOpacity(.8),
+                    backgroundColor: cs.surfaceContainerHighest.withValues(
+                      alpha: .8,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

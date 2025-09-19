@@ -10,6 +10,7 @@ import '../widgets/loan_list_skeleton.dart';
 import '../widgets/state_card.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/person_summary_card.dart';
+import '../sheets/add_payment_sheet.dart';
 
 class PersonDetailPage extends StatefulWidget {
   final String personName;
@@ -103,7 +104,7 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundColor: cs.primary.withOpacity(.12),
+              backgroundColor: cs.primary.withValues(alpha: .12),
               child: Icon(Icons.person, color: cs.primary, size: 18),
             ),
             const SizedBox(width: 10),
@@ -125,9 +126,9 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     _allTime
                         ? 'All time'
                         : 'Range: ${_formatRangeShort(_start, _end)}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -143,7 +144,7 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             decoration: BoxDecoration(
               border: Border(
-                top: BorderSide(color: cs.outlineVariant.withOpacity(.5)),
+                top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)),
               ),
             ),
             child: SingleChildScrollView(
@@ -157,10 +158,10 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: cs.surfaceVariant.withOpacity(.6),
+                      color: cs.surfaceContainerHighest.withValues(alpha: .6),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: cs.outlineVariant.withOpacity(.8),
+                        color: cs.outlineVariant.withValues(alpha: .8),
                         width: .7,
                       ),
                     ),
@@ -194,9 +195,11 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     onSelected: (v) => _toggleAllTime(v),
                     label: const Text('All time'),
                     avatar: const Icon(Icons.all_inclusive, size: 16),
-                    selectedColor: cs.primary.withOpacity(.14),
+                    selectedColor: cs.primary.withValues(alpha: .14),
                     checkmarkColor: cs.primary,
-                    side: BorderSide(color: cs.outlineVariant.withOpacity(.8)),
+                    side: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: .8),
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(24),
                     ),
@@ -299,6 +302,22 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                     return LoanCard(
                       loan: loan,
                       onOpen: () => _openLoan(loan),
+                      onRecordPayment:
+                          loan.status == 'paid'
+                              ? null
+                              : () async {
+                                  if (loan.id == null) return;
+                                  final paid = await _db.getPaidTotalForLoan(loan.id!);
+                                  if (!mounted) return;
+                                  await showAddPaymentSheet(
+                                    context: context,
+                                    loan: loan,
+                                    paidTotal: paid,
+                                    onSave: (p) async => _db.insertPayment(p),
+                                  );
+                                  if (!mounted) return;
+                                  _refresh();
+                                },
                       onMarkPaid:
                           loan.status == 'paid'
                               ? null
@@ -360,12 +379,18 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: FutureBuilder<double>(
+            future: loan.id == null ? Future.value(0) : _db.getPaidTotalForLoan(loan.id!),
+            builder: (context, snap) {
+              final paid = (snap.data ?? 0).toDouble();
+              final remaining = (loan.amount - paid).clamp(0, double.infinity);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               Row(
                 children: [
                   CircleAvatar(
@@ -399,6 +424,47 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                 style: TextStyle(color: cs.onSurface),
               ),
               Text('Date: $dueStr', style: TextStyle(color: cs.onSurface)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: .35),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.outlineVariant.withValues(alpha: .7), width: .6),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Paid: ₱${paid.toStringAsFixed(2)}', style: TextStyle(color: cs.onSurface)),
+                          Text('Remaining: ₱${remaining.toStringAsFixed(2)}', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ),
+                    if (loan.status != 'paid')
+                      FilledButton.tonalIcon(
+                        onPressed: snap.connectionState == ConnectionState.waiting
+                            ? null
+                            : () async {
+                                if (loan.id == null) return;
+                                await showAddPaymentSheet(
+                                  context: context,
+                                  loan: loan,
+                                  paidTotal: paid,
+                                  onSave: (p) async => _db.insertPayment(p),
+                                );
+                                if (!mounted) return;
+                                Navigator.of(context).pop();
+                                _refresh();
+                              },
+                        icon: const Icon(Icons.payments_outlined),
+                        label: const Text('Record payment'),
+                      ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
               if (loan.imagePath != null)
                 GestureDetector(
@@ -437,6 +503,9 @@ class _PersonDetailPageState extends State<PersonDetailPage> {
                 ),
               ),
             ],
+              );
+            },
+          ),
           ),
         );
       },

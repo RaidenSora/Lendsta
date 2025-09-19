@@ -31,14 +31,14 @@ class PersonSummaryCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          color: cs.surfaceVariant.withOpacity(.25),
+          color: cs.surfaceContainerHighest.withValues(alpha: .25),
           border: Border.all(
-            color: cs.outlineVariant.withOpacity(.7),
+            color: cs.outlineVariant.withValues(alpha: .7),
             width: 0.6,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.04),
+              color: Colors.black.withValues(alpha: .04),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -51,7 +51,7 @@ class PersonSummaryCard extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: accent.withOpacity(.12),
+                color: accent.withValues(alpha: .12),
                 borderRadius: BorderRadius.circular(10),
               ),
               alignment: Alignment.center,

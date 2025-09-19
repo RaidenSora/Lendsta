@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import '../models/loan.dart';
 import '../models/person.dart';
+import '../models/payment.dart';
 
 class LoansDatabase {
   static final LoansDatabase _instance = LoansDatabase._internal();
@@ -9,7 +10,7 @@ class LoansDatabase {
   LoansDatabase._internal();
 
   static const _dbName = 'loans.db';
-  static const _dbVersion = 4; // v4: collapse statuses to paid/unpaid
+  static const _dbVersion = 5; // v5: add payments table + remaining in summaries
   Database? _db;
 
   Future<Database> get database async {
@@ -65,23 +66,26 @@ class LoansDatabase {
     final String whereClause;
     final List<Object?> whereArgs;
     if (start == null || end == null) {
-      whereClause = 'borrower = ?';
+      whereClause = 'l.borrower = ?';
       whereArgs = [personName];
     } else {
       whereClause =
-          'borrower = ? AND date(dueDate) BETWEEN date(?) AND date(?)';
+          'l.borrower = ? AND date(l.dueDate) BETWEEN date(?) AND date(?)';
       whereArgs = [personName, _isoDateOnly(start), _isoDateOnly(end)];
     }
 
-    // total, avg interest, paid count, and unpaid amount
     final rows = await db.rawQuery('''
+    WITH paid AS (
+      SELECT loanId, COALESCE(SUM(amount),0) AS paid_total FROM payments GROUP BY loanId
+    )
     SELECT
       COUNT(*) AS total_count,
-      COALESCE(SUM(amount), 0) AS total_amount,
-      COALESCE(AVG(interest), 0) AS avg_interest,
-      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paid_count,
-      COALESCE(SUM(CASE WHEN status != 'paid' THEN amount ELSE 0 END), 0) AS unpaid_amount
-    FROM loans
+      COALESCE(SUM(l.amount), 0) AS total_amount,
+      COALESCE(AVG(l.interest), 0) AS avg_interest,
+      SUM(CASE WHEN l.status = 'paid' THEN 1 ELSE 0 END) AS paid_count,
+      COALESCE(SUM(CASE WHEN l.status != 'paid' THEN (l.amount - COALESCE(p.paid_total,0)) ELSE 0 END), 0) AS unpaid_amount
+    FROM loans l
+    LEFT JOIN paid p ON p.loanId = l.id
     WHERE $whereClause
   ''', whereArgs);
 
@@ -108,6 +112,17 @@ class LoansDatabase {
         dueDate TEXT NOT NULL,
         status TEXT NOT NULL,
         imagePath TEXT
+      );
+    ''');
+
+    // payments table
+    await db.execute('''
+      CREATE TABLE payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        loanId INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        date TEXT NOT NULL,
+        note TEXT
       );
     ''');
 
@@ -145,6 +160,18 @@ class LoansDatabase {
       await db.execute(
         "UPDATE loans SET status = 'unpaid' WHERE status != 'paid';",
       );
+    }
+    // v4 -> v5: add payments table
+    if (oldVersion < 5) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          loanId INTEGER NOT NULL,
+          amount REAL NOT NULL,
+          date TEXT NOT NULL,
+          note TEXT
+        );
+      ''');
     }
   }
 
@@ -206,6 +233,8 @@ class LoansDatabase {
 
   Future<int> deleteLoan(int id) async {
     final db = await database;
+    // Manually cascade payments for this loan
+    await db.delete('payments', where: 'loanId = ?', whereArgs: [id]);
     return db.delete('loans', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -232,37 +261,90 @@ class LoansDatabase {
     }
 
     final sql = '''
+    WITH paid AS (
+      SELECT loanId, COALESCE(SUM(amount),0) AS paid_total FROM payments GROUP BY loanId
+    )
     SELECT
       COUNT(*) AS total_count,
-      COALESCE(SUM(amount), 0)            AS total_amount,
-      COALESCE(AVG(interest), 0)          AS avg_interest,
-      SUM(CASE WHEN status = 'paid'     THEN 1 ELSE 0 END) AS paid_count,
-      COALESCE(SUM(CASE WHEN status != 'paid' THEN amount ELSE 0 END), 0) AS unpaid_amount
-    FROM loans
-    ${where.isEmpty ? '' : 'WHERE ' + where.join(' AND ')}
+      COALESCE(SUM(l.amount), 0)            AS total_amount,
+      COALESCE(AVG(l.interest), 0)          AS avg_interest,
+      SUM(CASE WHEN l.status = 'paid'     THEN 1 ELSE 0 END) AS paid_count,
+      COALESCE(SUM(CASE WHEN l.status != 'paid' THEN (l.amount - COALESCE(p.paid_total,0)) ELSE 0 END), 0) AS unpaid_amount
+    FROM loans l
+    LEFT JOIN paid p ON p.loanId = l.id
+    ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
   ''';
 
     final rows = await db.rawQuery(sql, args);
     final m = rows.first;
 
-    int _asInt(Object? v) => switch (v) {
+    int asInt(Object? v) => switch (v) {
       int i => i,
       num n => n.toInt(),
       _ => 0,
     };
-    double _asDouble(Object? v) => switch (v) {
+    double asDouble(Object? v) => switch (v) {
       double d => d,
       num n => n.toDouble(),
       _ => 0.0,
     };
 
     return LoanSummary(
-      totalCount: _asInt(m['total_count']),
-      totalAmount: _asDouble(m['total_amount']),
-      avgInterest: _asDouble(m['avg_interest']),
-      paidCount: _asInt(m['paid_count']),
-      unpaidAmount: _asDouble(m['unpaid_amount']),
+      totalCount: asInt(m['total_count']),
+      totalAmount: asDouble(m['total_amount']),
+      avgInterest: asDouble(m['avg_interest']),
+      paidCount: asInt(m['paid_count']),
+      unpaidAmount: asDouble(m['unpaid_amount']),
     );
+  }
+
+  // ----- Payments -----
+  Future<int> insertPayment(Payment payment) async {
+    final db = await database;
+    final id = await db.insert('payments', payment.toMap());
+    // Auto-update status if fully paid
+    try {
+      final paid = await getPaidTotalForLoan(payment.loanId);
+      final loanRows = await db.query(
+        'loans',
+        where: 'id = ?',
+        whereArgs: [payment.loanId],
+        limit: 1,
+      );
+      if (loanRows.isNotEmpty) {
+        final amount = (loanRows.first['amount'] as num).toDouble();
+        if (paid >= amount) {
+          await db.update(
+            'loans',
+            {'status': 'paid'},
+            where: 'id = ?',
+            whereArgs: [payment.loanId],
+          );
+        }
+      }
+    } catch (_) {}
+    return id;
+  }
+
+  Future<List<Payment>> getPaymentsForLoan(int loanId) async {
+    final db = await database;
+    final maps = await db.query(
+      'payments',
+      where: 'loanId = ?',
+      whereArgs: [loanId],
+      orderBy: 'date(date) ASC',
+    );
+    return maps.map(Payment.fromMap).toList();
+  }
+
+  Future<double> getPaidTotalForLoan(int loanId) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE loanId = ?',
+      [loanId],
+    );
+    final m = rows.first;
+    return ((m['total'] as num?)?.toDouble()) ?? 0.0;
   }
 
   // ----- People CRUD -----

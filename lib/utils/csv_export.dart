@@ -41,9 +41,11 @@ String _row(List<String> cols) => cols.map(_escape).join(',');
 
 String _escape(String value) {
   final needsQuotes =
-      value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r');
+      value.contains(',') ||
+      value.contains('"') ||
+      value.contains('\n') ||
+      value.contains('\r');
   var v = value.replaceAll('"', '""');
-  if (needsQuotes) v = '"' + v + '"';
+  if (needsQuotes) v = '"$v"';
   return v;
 }
-

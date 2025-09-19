@@ -8,7 +8,10 @@ class StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = status.toLowerCase();
     final isPaid = s == 'paid';
-    final bg = isPaid ? Colors.green.withOpacity(.12) : Colors.orange.withOpacity(.12);
+    final bg =
+        isPaid
+            ? Colors.green.withValues(alpha: .12)
+            : Colors.orange.withValues(alpha: .12);
     final fg = isPaid ? Colors.green.shade700 : Colors.orange.shade800;
     final label = isPaid ? 'Paid' : 'Unpaid';
     return Container(

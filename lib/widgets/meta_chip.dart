@@ -11,7 +11,7 @@ class MetaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant.withOpacity(.5),
+        color: cs.surfaceContainerHighest.withValues(alpha: .5),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

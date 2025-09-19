@@ -1,17 +1,16 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show MethodChannel, MissingPluginException;
 import '../data/loans_db.dart';
 import '../models/loan.dart';
 import '../models/person.dart';
 import '../sheets/add_loan_sheet.dart';
+import '../sheets/add_payment_sheet.dart';
 import '../widgets/loan_card.dart';
 import '../widgets/loan_list_skeleton.dart';
 import '../widgets/state_card.dart';
@@ -99,97 +98,173 @@ class _DashboardPageState extends State<Dashboard> {
         final dueStr =
             '${loan.dueDate.year}-${loan.dueDate.month.toString().padLeft(2, '0')}-${loan.dueDate.day.toString().padLeft(2, '0')}';
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    child: Text(
-                      loan.borrower.isNotEmpty
-                          ? loan.borrower[0].toUpperCase()
-                          : '?',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${loan.borrower} • ${loan.item}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      child: Text(
+                        loan.borrower.isNotEmpty
+                            ? loan.borrower[0].toUpperCase()
+                            : '?',
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text('Amount: ₱$amountStr'),
-              Text('Interest: ${loan.interest.toStringAsFixed(2)}%'),
-              Text('Date: $dueStr'),
-              const SizedBox(height: 12),
-              if (loan.imagePath != null)
-                GestureDetector(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder:
-                          (_) => Dialog(
-                            child: InteractiveViewer(
-                              child: Image.file(File(loan.imagePath!)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '${loan.borrower} • ${loan.item}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text('Amount: ₱$amountStr'),
+                Text('Interest: ${loan.interest.toStringAsFixed(2)}%'),
+                Text('Date: $dueStr'),
+                const SizedBox(height: 8),
+                FutureBuilder<double>(
+                  future:
+                      loan.id == null
+                          ? Future.value(0)
+                          : _db.getPaidTotalForLoan(loan.id!),
+                  builder: (context, snap) {
+                    final paid = (snap.data ?? 0).toDouble();
+                    final remaining = (loan.amount - paid).clamp(
+                      0,
+                      double.infinity,
+                    );
+                    final cs = Theme.of(context).colorScheme;
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withValues(
+                          alpha: .35,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: .7),
+                          width: .6,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Paid: ₱${paid.toStringAsFixed(2)}'),
+                                Text(
+                                  'Remaining: ₱${remaining.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                          if (loan.status != 'paid')
+                            FilledButton.tonalIcon(
+                              onPressed:
+                                  snap.connectionState ==
+                                          ConnectionState.waiting
+                                      ? null
+                                      : () async {
+                                        if (loan.id == null) return;
+                                        await showAddPaymentSheet(
+                                          context: context,
+                                          loan: loan,
+                                          paidTotal: paid,
+                                          onSave:
+                                              (p) async => _db.insertPayment(p),
+                                        );
+                                        if (!mounted) return;
+                                        Navigator.of(context).pop();
+                                        _refresh();
+                                        _snack('Payment recorded');
+                                      },
+                              icon: const Icon(Icons.payments_outlined),
+                              label: const Text('Record payment'),
+                            ),
+                        ],
+                      ),
                     );
                   },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      File(loan.imagePath!),
-                      height: 220,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                )
-              else
-                const Text('No attachment'),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  if (loan.status != 'paid')
-                    FilledButton.icon(
-                      onPressed: () async {
-                        await _db.updateLoanStatus(loan.id!, 'paid');
-                        if (!mounted) return;
-                        Navigator.of(context).pop();
-                        _refresh();
-                        _snack('Marked as paid');
-                      },
-                      icon: const Icon(Icons.check_circle),
-                      label: const Text('Mark as paid'),
-                    ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      Navigator.of(context).pop();
-                      await _delete(loan);
+                ),
+                const SizedBox(height: 12),
+                if (loan.imagePath != null)
+                  GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder:
+                            (_) => Dialog(
+                              child: InteractiveViewer(
+                                child: Image.file(File(loan.imagePath!)),
+                              ),
+                            ),
+                      );
                     },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Delete'),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(loan.imagePath!),
+                        height: 220,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  )
+                else
+                  const Text('No attachment'),
+                const SizedBox(height: 16),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (loan.status != 'paid')
+                        FilledButton.icon(
+                          onPressed: () async {
+                            await _db.updateLoanStatus(loan.id!, 'paid');
+                            if (!mounted) return;
+                            Navigator.of(context).pop();
+                            _refresh();
+                            _snack('Marked as paid');
+                          },
+                          icon: const Icon(Icons.check_circle),
+                          label: const Text('Mark as paid'),
+                        ),
+                      if (loan.status != 'paid') const SizedBox(width: 8),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          await _delete(loan);
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Delete'),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ],
                   ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Close'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         );
       },
@@ -249,7 +324,7 @@ class _DashboardPageState extends State<Dashboard> {
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundColor: cs.primary.withOpacity(.12),
+              backgroundColor: cs.primary.withValues(alpha: .12),
               child: Icon(Icons.list_alt, color: cs.primary, size: 18),
             ),
             const SizedBox(width: 10),
@@ -265,7 +340,7 @@ class _DashboardPageState extends State<Dashboard> {
                   ),
                 ),
                 Text(
-                  'Loan tracker',
+                  'Loan Ledger',
                   style: Theme.of(
                     context,
                   ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
@@ -307,7 +382,7 @@ class _DashboardPageState extends State<Dashboard> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             decoration: BoxDecoration(
               border: Border(
-                top: BorderSide(color: cs.outlineVariant.withOpacity(.5)),
+                top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)),
               ),
             ),
             child: SingleChildScrollView(
@@ -321,10 +396,10 @@ class _DashboardPageState extends State<Dashboard> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: cs.surfaceVariant.withOpacity(.6),
+                      color: cs.surfaceContainerHighest.withValues(alpha: .6),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: cs.outlineVariant.withOpacity(.8),
+                        color: cs.outlineVariant.withValues(alpha: .8),
                         width: .7,
                       ),
                     ),
@@ -358,9 +433,11 @@ class _DashboardPageState extends State<Dashboard> {
                     onSelected: (v) => _toggleAllTime(v),
                     label: const Text('All time'),
                     avatar: const Icon(Icons.all_inclusive, size: 16),
-                    selectedColor: cs.primary.withOpacity(.14),
+                    selectedColor: cs.primary.withValues(alpha: .14),
                     checkmarkColor: cs.primary,
-                    side: BorderSide(color: cs.outlineVariant.withOpacity(.8)),
+                    side: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: .8),
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(24),
                     ),
@@ -459,7 +536,7 @@ class _DashboardPageState extends State<Dashboard> {
                         icon: const Icon(Icons.date_range),
                         label: const Text('Change range'),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 0),
                       FilledButton.icon(
                         onPressed: _showAdd,
                         icon: const Icon(Icons.add),
@@ -476,6 +553,26 @@ class _DashboardPageState extends State<Dashboard> {
                       (_, i) => LoanCard(
                         loan: loans[i],
                         onOpen: () => _openLoan(loans[i]),
+                        onRecordPayment:
+                            loans[i].status == 'paid'
+                                ? null
+                                : () async {
+                                  final loan = loans[i];
+                                  if (loan.id == null) return;
+                                  final paid = await _db.getPaidTotalForLoan(
+                                    loan.id!,
+                                  );
+                                  if (!mounted) return;
+                                  await showAddPaymentSheet(
+                                    context: context,
+                                    loan: loan,
+                                    paidTotal: paid,
+                                    onSave: (p) async => _db.insertPayment(p),
+                                  );
+                                  if (!mounted) return;
+                                  _refresh();
+                                  _snack('Payment recorded');
+                                },
                         onMarkPaid:
                             loans[i].status == 'paid'
                                 ? null
@@ -551,7 +648,10 @@ class _DashboardPageState extends State<Dashboard> {
                   child: SingleChildScrollView(
                     child: SelectableText(
                       csv,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -581,7 +681,11 @@ class _DashboardPageState extends State<Dashboard> {
                 final savedPath = await _saveCsvToDownloads(csv);
                 if (!context.mounted) return;
                 Navigator.of(context).pop();
-                _snack(savedPath == null ? 'Saved to app storage' : 'Saved: $savedPath');
+                _snack(
+                  savedPath == null
+                      ? 'Saved to app storage'
+                      : 'Saved: $savedPath',
+                );
               },
               icon: const Icon(Icons.save_alt),
               label: const Text('Save to Downloads'),
@@ -611,13 +715,10 @@ class _DashboardPageState extends State<Dashboard> {
     // Android method channel to save into Downloads with MediaStore (primary path)
     try {
       const ch = MethodChannel('listah/downloads');
-      final saved = await ch.invokeMethod<String>(
-        'saveCsv',
-        {
-          'name': fname,
-          'bytes': bytes,
-        },
-      );
+      final saved = await ch.invokeMethod<String>('saveCsv', {
+        'name': fname,
+        'bytes': bytes,
+      });
       if (saved != null && saved.isNotEmpty) return saved;
     } catch (_) {
       // ignore and fallback
@@ -659,11 +760,7 @@ class _DashboardPageState extends State<Dashboard> {
       final file = File(path);
       await file.writeAsString(csv);
 
-      final xFile = XFile(
-        path,
-        name: fname,
-        mimeType: 'text/csv',
-      );
+      final xFile = XFile(path, name: fname, mimeType: 'text/csv');
       await Share.shareXFiles([xFile], text: 'Loans export');
     } catch (e) {
       if (!mounted) return;
